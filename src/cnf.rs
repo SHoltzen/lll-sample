@@ -139,6 +139,10 @@ impl Cnf {
     /// expands a set of clauses to its neighborhood
     fn expand(&self, clauseset: &HashSet<usize>) -> HashSet<usize> {
         let mut r = HashSet::new();
+        for c in clauseset {
+            r = r.union(&self.deps[*c]).cloned().collect();
+        }
+        /*
         let mut visited = HashSet::new();
         let mut frontier = Vec::from_iter(clauseset.into_iter());
         while !frontier.is_empty() {
@@ -147,10 +151,10 @@ impl Cnf {
                 continue;
             }
             visited.insert(cur);
-            for neighbor in self.deps[cur] {
+            for neighbor in self.deps[*cur] {
                 
             }
-        }
+        }*/
         r
     }
 
