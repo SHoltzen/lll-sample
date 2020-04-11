@@ -11,4 +11,5 @@ rand = "0.3.18"
 dimacs = "0.2.0"
 maplit = "1.0.1"
 bitvec = "0.17.4"
+bit-set = "0.5.1"
 

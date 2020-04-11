@@ -1,15 +1,15 @@
 use std::cmp::*;
 use rand;
-use bitvec::prelude::*;
 use rand::distributions::IndependentSample;
 use rand::StdRng;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
+use bit_set::BitSet;
 
 macro_rules! set {
     ( $( $x:expr ),* ) => {  // Match zero or more comma delimited items
         {
-            let mut temp_set = HashSet::new();  // Create a mutable HashSet
+            let mut temp_set = BitSet::new();  // Create a mutable HashSet
             $(
                 temp_set.insert($x); // Insert each item matched into the HashSet
             )*
@@ -58,9 +58,9 @@ impl Assignment {
         Assignment{ v: v }
     }
 
-    fn rerandomize(self, pos: HashSet<usize>) -> Assignment {
+    fn rerandomize(self, pos: BitSet) -> Assignment {
         let mut v = self.v.clone();
-        for i in pos {
+        for i in pos.iter() {
             v[i] = rand::random();
         }
         Assignment{v: v}
@@ -70,20 +70,20 @@ impl Assignment {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Cnf {
     clauses: Vec<Vec<Literal>>,
-    deps: Vec<BitVec>, // for each clause, a vector containing all clauses that share variables with it
+    deps: Vec<BitSet>, // for each clause, a vector containing all clauses that share variables with it
     num_vars: usize,
 }
 
 impl Cnf {
-    fn gen_deps(clauses: &Vec<Vec<Literal>>) -> Vec<BitVec> {
+    fn gen_deps(clauses: &Vec<Vec<Literal>>) -> Vec<BitSet> {
         let mut r = Vec::new();
         for c1 in 0..(clauses.len()) {
-            let mut s = bitvec![0; clauses.len()];
+            let mut s = BitSet::new();
             for c2 in 0..(clauses.len()) {
                 for lit1 in &clauses[c1] {
                     for lit2 in &clauses[c2] {
                         if lit1.get_label() == lit2.get_label() {
-                            s.set(c2, true);
+                            s.insert(c2);
                         }
                     }
                 }
@@ -126,8 +126,8 @@ impl Cnf {
 
     /// Produces a set of indices that is true iff the clause at position i is violated by
     /// the assignment
-    fn find_bad(&self, assgn: &Assignment) -> HashSet<usize> {
-        let mut r = HashSet::new();
+    fn find_bad(&self, assgn: &Assignment) -> BitSet {
+        let mut r = BitSet::new();
         for i in 0..self.clauses.len() {
             let mut bad = true;
             for lit in &self.clauses[i] {
@@ -144,25 +144,19 @@ impl Cnf {
     }
 
     /// expands a set of clauses to its neighborhood
-    fn expand(&self, clauseset: &HashSet<usize>) -> HashSet<usize> {
-        let mut r = bitvec![0; self.clauses.len()];
+    fn expand(&self, clauseset: &BitSet) -> BitSet {
+        let mut r = BitSet::new();
         for c in clauseset {
-            r = r | self.deps[*c].clone();
+            r.union_with(&self.deps[c]);
         }
-        let mut res = HashSet::new();
-        for i in 0..self.clauses.len() {
-            if r[i] == true && !clauseset.contains(&i) {
-                res.insert(i);
-            }
-        }
-        res
+        r.difference(clauseset).collect()
     }
 
     /// gets the indices of all variables in `clauseset`
-    fn var(&self, clauseset: &HashSet<usize>) -> HashSet<usize> {
-        let mut r = HashSet::new();
+    fn var(&self, clauseset: &BitSet) -> BitSet {
+        let mut r = BitSet::new();
         for i in clauseset {
-            for lit in &self.clauses[*i] {
+            for lit in &self.clauses[i] {
                 let VarLabel(x) = lit.get_label();
                 r.insert(x as usize);
             }
@@ -170,7 +164,7 @@ impl Cnf {
         r
     }
 
-    fn is_blocked(&self, assgn: &Assignment, restriction: &HashSet<usize>, clause: usize) -> bool {
+    fn is_blocked(&self, assgn: &Assignment, restriction: &BitSet, clause: usize) -> bool {
         // check if they are independent or if the clause is implied
         let mut indep = true;
         let mut implied = false;
@@ -178,7 +172,7 @@ impl Cnf {
         for i in &self.clauses[clause] {
             // println!("checking {:?}", i);
             let VarLabel(l) = i.get_label();
-            if restriction.contains(&(l as usize)) {
+            if restriction.contains(l as usize) {
                 indep = false;
                 if assgn.v[l as usize] == i.get_polarity() {
                     implied = true; // they agree on an instance or they are non-overlapping
@@ -191,21 +185,21 @@ impl Cnf {
     /// Produces a clause set that is in the neighborhood of `set` wrt. `assgn`
     /// set contains a vector of clause indices
     /// this follows Algorithm 5 of Guo et al.
-    fn find_resample(&self, assgn: &Assignment) -> HashSet<usize> {
-        let mut r : HashSet<usize> = self.find_bad(&assgn);
+    fn find_resample(&self, assgn: &Assignment) -> BitSet {
+        let mut r = self.find_bad(&assgn);
         // let n = Vec::new();
-        let mut n : HashSet<usize> = HashSet::new();
-        let mut u : HashSet<usize> = self.expand(&r);
+        let mut n = BitSet::new();
+        let mut u = self.expand(&r);
         while !u.is_empty() {
             let restr = self.var(&r);
             for i in &u {
-                if !self.is_blocked(&assgn, &restr, *i) {
-                    r.insert(*i);
+                if !self.is_blocked(&assgn, &restr, i) {
+                    r.insert(i);
                 } else {
-                    n.insert(*i);
+                    n.insert(i);
                 }
             }
-            u = self.expand(&r).difference(&n).cloned().collect();
+            u = self.expand(&r).difference(&n).collect();
         }
         r
     }
@@ -358,11 +352,11 @@ fn test_resample() {
 }
 
 
-
 #[test]
 fn test_partial_reject() {
-    // let cnf = Cnf::from_file(String::from(C8));
-    let cnf = Cnf::rand_cnf(&mut StdRng::new().unwrap(), 10, 10);
+    let kclique1 = include_str!("../cnf/php510.dimacs");
+    let cnf = Cnf::from_file(String::from(kclique1));
+    // let cnf = Cnf::rand_cnf(&mut StdRng::new().unwrap(), 1000, 300);
     let mut results = HashMap::new();
     for _ in 0..10000 {
         let res = cnf.partial_rejection();
