@@ -127,7 +127,7 @@ impl Cnf {
     /// Produces a set of indices that is true iff the clause at position i is violated by
     /// the assignment
     fn find_bad(&self, assgn: &Assignment) -> BitSet {
-        let mut r = BitSet::new();
+        let mut r = BitSet::with_capacity(self.clauses.len());
         for i in 0..self.clauses.len() {
             let mut bad = true;
             for lit in &self.clauses[i] {
@@ -145,7 +145,7 @@ impl Cnf {
 
     /// expands a set of clauses to its neighborhood
     fn expand(&self, clauseset: &BitSet) -> BitSet {
-        let mut r = BitSet::new();
+        let mut r = BitSet::with_capacity(self.clauses.len());
         for c in clauseset {
             r.union_with(&self.deps[c]);
         }
@@ -154,7 +154,7 @@ impl Cnf {
 
     /// gets the indices of all variables in `clauseset`
     fn var(&self, clauseset: &BitSet) -> BitSet {
-        let mut r = BitSet::new();
+        let mut r = BitSet::with_capacity(self.num_vars);
         for i in clauseset {
             for lit in &self.clauses[i] {
                 let VarLabel(x) = lit.get_label();
@@ -176,6 +176,7 @@ impl Cnf {
                 indep = false;
                 if assgn.v[l as usize] == i.get_polarity() {
                     implied = true; // they agree on an instance or they are non-overlapping
+                    // println!("implied")
                 }
             }
         }
@@ -187,7 +188,6 @@ impl Cnf {
     /// this follows Algorithm 5 of Guo et al.
     fn find_resample(&self, assgn: &Assignment) -> BitSet {
         let mut r = self.find_bad(&assgn);
-        // let n = Vec::new();
         let mut n = BitSet::new();
         let mut u = self.expand(&r);
         while !u.is_empty() {
@@ -354,11 +354,11 @@ fn test_resample() {
 
 #[test]
 fn test_partial_reject() {
-    let kclique1 = include_str!("../cnf/php510.dimacs");
-    let cnf = Cnf::from_file(String::from(kclique1));
-    // let cnf = Cnf::rand_cnf(&mut StdRng::new().unwrap(), 1000, 300);
+    // let kclique1 = include_str!("../cnf/c8.cnf");
+    // let cnf = Cnf::from_file(String::from(kclique1));
+    let cnf = Cnf::rand_cnf(&mut StdRng::new().unwrap(), 80000, 20000);
     let mut results = HashMap::new();
-    for _ in 0..10000 {
+    for _ in 0..10 {
         let res = cnf.partial_rejection();
         *results.entry(res.clone()).or_insert(0) += 1;
         println!("found sample\n\n")
